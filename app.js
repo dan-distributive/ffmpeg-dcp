@@ -350,6 +350,24 @@ function bytesToBase64(bytes) {
   return btoa(binary);
 }
 
+// Fetched once, reused across every dispatchJob() call this session -
+// the wasm module + its glue, served from disk (ffmpeg-wasm/) and
+// shipped as job arguments rather than via a published DCP package.
+let glueSourcePromise = null;
+let wasmBase64Promise = null;
+async function getGlueSource() {
+  if (!glueSourcePromise) glueSourcePromise = fetch('./ffmpeg-wasm/dcp-transcode-glue.js').then((r) => r.text());
+  return glueSourcePromise;
+}
+async function getWasmBase64() {
+  if (!wasmBase64Promise) {
+    wasmBase64Promise = fetch('./ffmpeg-wasm/dcp-transcode.wasm')
+      .then((r) => r.arrayBuffer())
+      .then((buf) => bytesToBase64(new Uint8Array(buf)));
+  }
+  return wasmBase64Promise;
+}
+
 
 // ---- DCP job definition and dispatch ----
 // Two input-set shapes, picked by maxDistribution (section 1 toggle):
@@ -361,6 +379,8 @@ function bytesToBase64(bytes) {
 async function dispatchJob(chunks, activeRenditions, durations, normalizeLoudness, maxDistribution, inputBaseName) {
 
   const { compute, identity, wallet } = window.dcp;
+  log('Fetching wasm module + glue for fleet dispatch...');
+  const [glueSource, wasmBase64] = await Promise.all([getGlueSource(), getWasmBase64()]);
 
   // ID AND PAYMENT
   await identity.set(getApiKey());
@@ -403,14 +423,19 @@ async function dispatchJob(chunks, activeRenditions, durations, normalizeLoudnes
 
 
   // WORK FUNCTION
-  async function workFunction(unit, renditionsMetaJsonArg, normalizeLoudnessArg) {
+  async function workFunction(unit, glueSourceArg, wasmBase64Arg, renditionsMetaJsonArg, normalizeLoudnessArg) {
     progress();
     const renditionsMetaArg = JSON.parse(renditionsMetaJsonArg);
-    // Resolved via job.requires(['ffmpeg-wasm-test/ffmpeg-wasm.js']) below -
-    // the published package already wraps instantiateWasm around its own
-    // embedded wasm bytes, so no glue/wasm shipped as job arguments anymore.
-    const { createFfmpegModule } = require('ffmpeg-wasm.js');
-    const Module = await createFfmpegModule();
+    const moduleShim = { exports: {} };
+    new Function('module', 'exports', glueSourceArg)(moduleShim, moduleShim.exports);
+    const createFfmpegModule = moduleShim.exports;
+
+    const wasmBytes = Uint8Array.from(atob(wasmBase64Arg), (c) => c.charCodeAt(0));
+    const Module = await createFfmpegModule({
+      instantiateWasm(imports, successCallback) {
+        WebAssembly.instantiate(wasmBytes, imports).then((result) => successCallback(result.instance));
+      },
+    });
 
     const chunkBytes = Uint8Array.from(atob(unit.chunkBase64), (c) => c.charCodeAt(0));
     const inPath = '/chunk-in.ts';
@@ -468,8 +493,7 @@ async function dispatchJob(chunks, activeRenditions, durations, normalizeLoudnes
 
 
   // JOB
-  const job = compute.for(inputSet, workFunction, [renditionsMetaJson, normalizeLoudness]);
-  job.requires(['ffmpeg-wasm-test/ffmpeg-wasm.js']);
+  const job = compute.for(inputSet, workFunction, [glueSource, wasmBase64, renditionsMetaJson, normalizeLoudness]);
 
 
   // JOB CONFIG
