@@ -91,7 +91,7 @@ function getApiKey() {
   return apiKeyInput.value.trim() || DEFAULT_API_KEY;
 }
 
-// Compute group rows: one {joinKey, joinSecret} pair per row, rendered
+// Compute group rows: one {attachKey, attachSecret} pair per row, rendered
 // into #computeGroupRows. A blank key means "public group" - at least one
 // row is always present so there's always something to fill in; '×'
 // removes a row once there's more than one, or just clears the last one.
@@ -103,19 +103,19 @@ function loadStoredComputeGroups() {
     const stored = JSON.parse(localStorage.getItem(COMPUTE_GROUPS_STORAGE_KEY) || 'null');
     if (Array.isArray(stored) && stored.length) return stored;
   } catch { /* fall through to default */ }
-  return [{ joinKey: '', joinSecret: '' }];
+  return [{ attachKey: '', attachSecret: '' }];
 }
 
 function persistComputeGroups() {
   const groups = computeGroupRowEls.map((row) => ({
-    joinKey: row.keyInput.value.trim(),
-    joinSecret: row.secretInput.value.trim(),
+    attachKey: row.keyInput.value.trim(),
+    attachSecret: row.secretInput.value.trim(),
   }));
   localStorage.setItem(COMPUTE_GROUPS_STORAGE_KEY, JSON.stringify(groups));
   updateQrCode();
 }
 
-function makeComputeGroupRow(joinKey, joinSecret) {
+function makeComputeGroupRow(attachKey, attachSecret) {
   const row = document.createElement('div');
   row.className = 'compute-group-row';
   row.style.cssText = 'display:flex; gap:0.5rem; align-items:center;';
@@ -124,14 +124,14 @@ function makeComputeGroupRow(joinKey, joinSecret) {
 
   const keyInput = document.createElement('input');
   keyInput.type = 'text';
-  keyInput.placeholder = 'joinKey (blank = public)';
-  keyInput.value = joinKey || '';
+  keyInput.placeholder = 'attachKey (blank = global)';
+  keyInput.value = attachKey || '';
   keyInput.style.cssText = fieldStyle;
 
   const secretInput = document.createElement('input');
   secretInput.type = 'password';
-  secretInput.placeholder = 'joinSecret (optional)';
-  secretInput.value = joinSecret || '';
+  secretInput.placeholder = 'attachSecret (optional)';
+  secretInput.value = attachSecret || '';
   secretInput.style.cssText = fieldStyle;
 
   const removeBtn = document.createElement('button');
@@ -159,7 +159,7 @@ function makeComputeGroupRow(joinKey, joinSecret) {
 
 function renderComputeGroupRows(groups) {
   computeGroupRowsEl.innerHTML = '';
-  computeGroupRowEls = groups.map((g) => makeComputeGroupRow(g.joinKey, g.joinSecret));
+  computeGroupRowEls = groups.map((g) => makeComputeGroupRow(g.attachKey || g.joinKey, g.attachSecret || g.joinSecret));
   for (const row of computeGroupRowEls) computeGroupRowsEl.appendChild(row.el);
 }
 renderComputeGroupRows(loadStoredComputeGroups());
@@ -172,10 +172,10 @@ el('addComputeGroupBtn').addEventListener('click', () => {
 
 function getComputeGroups() {
   const groups = computeGroupRowEls
-    .map((row) => ({ joinKey: row.keyInput.value.trim(), joinSecret: row.secretInput.value.trim() }))
-    .filter((g) => g.joinKey);
-  if (!groups.length) return [{ joinKey: 'public' }];
-  return groups.map((g) => (g.joinSecret ? g : { joinKey: g.joinKey }));
+    .map((row) => ({ attachKey: row.keyInput.value.trim(), attachSecret: row.secretInput.value.trim() }))
+    .filter((g) => g.attachKey);
+  if (!groups.length) return [{ attachKey: 'global' }];
+  return groups.map((g) => (g.attachSecret ? g : { attachKey: g.attachKey }));
 }
 
 const qrcode = new QRCode(el('qrcode'), { width: 128, height: 128 });
@@ -185,12 +185,12 @@ const qrcode = new QRCode(el('qrcode'), { width: 128, height: 128 });
 // (public): plain dcp.live, no query param needed for the public group.
 function updateQrCode() {
   const groups = getComputeGroups();
-  if (groups.length === 1 && groups[0].joinKey === 'public') {
+  if (groups.length === 1 && groups[0].attachKey === 'global') {
     qrcode.makeCode('https://dcp.live');
     return;
   }
   const first = groups[0];
-  const raw = first.joinSecret ? `${first.joinKey},${first.joinSecret}` : first.joinKey;
+  const raw = first.attachSecret ? `${first.attachKey},${first.attachSecret}` : first.attachKey;
   qrcode.makeCode(`https://dcp.live/?computeGroups=${encodeURIComponent(raw)}`);
 }
 updateQrCode();
@@ -200,7 +200,7 @@ el('clearAccountBtn').addEventListener('click', (e) => {
   apiKeyInput.value = '';
   localStorage.removeItem(API_KEY_STORAGE_KEY);
   localStorage.removeItem(COMPUTE_GROUPS_STORAGE_KEY);
-  renderComputeGroupRows([{ joinKey: '', joinSecret: '' }]);
+  renderComputeGroupRows([{ attachKey: '', attachSecret: '' }]);
   updateQrCode();
   log('Cleared saved API key and compute group(s) from local storage.');
 });
@@ -731,7 +731,7 @@ async function dispatchJob(chunks, activeRenditions, durations, normalizeLoudnes
 
 
   // EXEC
-  const computeGroupsLabel = job.computeGroups.map((g) => g.joinKey).join(', ');
+  const computeGroupsLabel = job.computeGroups.map((g) => g.attachKey).join(', ');
   log(`Dispatching 1 job, ${totalSlices} slice(s) (${totalUnits} rendition-units across ${chunks.length} chunks x ${activeRenditions.length} renditions, ${maxDistribution ? 'distribute ladder' : 'one slice per chunk'}), to the DCP fleet (computeGroup: ${computeGroupsLabel})...`);
   await job.exec(0.124);
 

@@ -85,15 +85,15 @@ async function main() {
   }
   let computeGroup;
   if (cg) {
-    const [joinKey, joinSecret] = cg.split(',');
-    computeGroup = joinSecret ? { joinKey, joinSecret } : { joinKey };
+    const [attachKey, attachSecret] = cg.split(',');
+    computeGroup = attachSecret ? { attachKey, attachSecret } : { attachKey };
   }
 
   await identity.set(apiKey);
 
   const job = compute.for([{ numFrames: 10, gopSize: 2 }], testFfmpegWasm, []);
   job.requires(['ffmpeg-wasm-test/ffmpeg-wasm.js']);
-  job.computeGroups = computeGroup ? [computeGroup] : [{ joinKey: 'public' }];
+  job.computeGroups = computeGroup ? [computeGroup] : [{ attachKey: 'global' }];
   job.public = {
     name: 'ffmpeg-wasm-test published-package test',
     description: 'Confirms the published ffmpeg-wasm-test package works via job.requires()',

@@ -30,8 +30,8 @@ browser's local storage across reloads (a "clear" link resets it):
 - **API key** - your DCP identity key, from your account on
   [your DCP portal](https://dcp.cloud/). Leave blank to fall back
   to the built-in demo key (`DEFAULT_API_KEY` in `app.js`).
-- **Compute group(s)** - one row per group, each a `joinKey` field and
-  a masked `joinSecret` field (secret optional). Leave a row's key
+- **Compute group(s)** - one row per group, each a `attachKey` field and
+  a masked `attachSecret` field (secret optional). Leave a row's key
   blank to dispatch to the public compute group. "+ Add another group"
   adds more rows; each row's "×" removes it (or clears it, if it's the
   only row left).
